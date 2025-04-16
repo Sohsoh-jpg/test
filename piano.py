@@ -28,44 +28,42 @@ STAGE_PIANO = 2
 VICTORY_SCREEN = 3
 
 # Piano game states
-STATE_PIANO = 1      # Free play mode
-STATE_LISTENING = 2  # Computer playing sequence
-STATE_GUESSING = 3   # Player guessing sequence
-STATE_FEEDBACK = 4   # Showing right/wrong feedback
+STATE_PIANO = 1
+STATE_LISTENING = 2
+STATE_GUESSING = 3
+STATE_FEEDBACK = 4
 
 # Load images
 try:
     # Forest background
-    forest_bg = pygame.image.load("C:/Users/USER/Documents/GitHub/FragmentsOfMaya/fragments/scene3.png")
+    forest_bg = pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\scene3.png").convert()
     forest_bg = pygame.transform.scale(forest_bg, (WIDTH, HEIGHT))
     
     # Character animations
     character_images = {
-        'right': [pygame.transform.scale(pygame.image.load(f'C:/Users/USER/Documents/GitHub/FragmentsOfMaya/fragments/pic{i}.gif'), (100, 130)) for i in range(1, 5)],
-        'left': [pygame.transform.flip(pygame.transform.scale(pygame.image.load(f'C:/Users/USER/Documents/GitHub/FragmentsOfMaya/fragments/pic{i}.gif'), (100, 130)), True, False) for i in range(1, 5)]
+        'right': [pygame.transform.scale(pygame.image.load(f"C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\pic{i}.gif"), (100, 130)) for i in range(1, 5)],
+        'left': [pygame.transform.flip(pygame.transform.scale(pygame.image.load(f"C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\pic{i}.gif"), (100, 130)), True, False) for i in range(1, 5)]
     }
     
-    # Piano background - full screen
-    piano_bg = pygame.Surface((WIDTH, HEIGHT))
-    piano_bg.fill(DARK_BLUE)
-    try:
-        piano_img = pygame.image.load("C:/Users/USER/Documents/GitHub/FragmentsOfMaya/fragments/piano_background.png")
-        piano_bg = pygame.transform.scale(piano_img, (WIDTH, HEIGHT))
-    except:
-        print("Using solid color piano background")
-
-    # Piano key overlays
-    key_overlays = {
-        K_a: pygame.Surface((WIDTH//7, 200), pygame.SRCALPHA),
-        K_b: pygame.Surface((WIDTH//7, 200), pygame.SRCALPHA),
-        K_c: pygame.Surface((WIDTH//7, 200), pygame.SRCALPHA),
-        K_d: pygame.Surface((WIDTH//7, 200), pygame.SRCALPHA),
-        K_e: pygame.Surface((WIDTH//7, 200), pygame.SRCALPHA),
-        K_f: pygame.Surface((WIDTH//7, 200), pygame.SRCALPHA),
-        K_g: pygame.Surface((WIDTH//7, 200), pygame.SRCALPHA)
+    # Piano images - now with transparency
+    piano_bg = pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano.png").convert_alpha()
+    piano_bg = pygame.transform.scale(piano_bg, (WIDTH, HEIGHT))
+    
+    # Make piano keys semi-transparent
+    piano_key_bgs = {
+        K_a: pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano a.png").convert_alpha(),
+        K_b: pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano b.png").convert_alpha(),
+        K_c: pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano c.png").convert_alpha(),
+        K_d: pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano d.png").convert_alpha(),
+        K_e: pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano e.png").convert_alpha(),
+        K_f: pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano f.png").convert_alpha(),
+        K_g: pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano g.png").convert_alpha()
     }
-    for key, surf in key_overlays.items():
-        surf.fill((255, 255, 255, 120))
+    
+    # Scale key images and set transparency
+    for key in piano_key_bgs:
+        piano_key_bgs[key] = pygame.transform.scale(piano_key_bgs[key], (WIDTH, HEIGHT))
+        piano_key_bgs[key].set_alpha(180)  # Semi-transparent (0-255)
 
 except Exception as e:
     print(f"Error loading images: {e}")
@@ -81,54 +79,45 @@ except Exception as e:
         character_images['right'][i].fill((200, 100, 100))
         pygame.draw.circle(character_images['right'][i], BLACK, (50, 30), 15)
         pygame.draw.line(character_images['right'][i], BLACK, (50, 45), (50, 90), 3)
-        pygame.draw.line(character_images['right'][i], BLACK, (50, 60), (80, 40), 3)
-        pygame.draw.line(character_images['right'][i], BLACK, (50, 60), (20, 40), 3)
-        pygame.draw.line(character_images['right'][i], BLACK, (50, 90), (80, 120), 3)
-        pygame.draw.line(character_images['right'][i], BLACK, (50, 90), (20, 120), 3)
-        character_images['left'][i].blit(character_images['right'][i], (0, 0))
+        character_images['left'][i].blit(pygame.transform.flip(character_images['right'][i], True, False), (0, 0))
     
-    piano_bg = pygame.Surface((WIDTH, HEIGHT))
-    piano_bg.fill(DARK_BLUE)
-    key_overlays = {k: pygame.Surface((WIDTH//7, 200), pygame.SRCALPHA) for k in [K_a, K_b, K_c, K_d, K_e, K_f, K_g]}
-    for surf in key_overlays.values():
-        surf.fill((255, 255, 255, 120))
+    piano_bg = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    piano_bg.fill((30, 30, 40, 180))  # Semi-transparent
+    piano_key_bgs = {key: pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA) for key in [K_a, K_b, K_c, K_d, K_e, K_f, K_g]}
+    for key in piano_key_bgs:
+        piano_key_bgs[key].fill((random.randint(50, 200), random.randint(50, 200), random.randint(50, 200), 180))
 
 # Piano configuration
 piano_notes = [
-    {'key': K_a, 'name': 'A', 'color': (255, 100, 100), 'sound': None},
-    {'key': K_b, 'name': 'B', 'color': (255, 180, 100), 'sound': None},
-    {'key': K_c, 'name': 'C', 'color': (255, 255, 100), 'sound': None},
-    {'key': K_d, 'name': 'D', 'color': (100, 255, 100), 'sound': None},
-    {'key': K_e, 'name': 'E', 'color': (100, 255, 255), 'sound': None},
-    {'key': K_f, 'name': 'F', 'color': (100, 100, 255), 'sound': None},
-    {'key': K_g, 'name': 'G', 'color': (200, 100, 255), 'sound': None}
+    {'key': K_a, 'name': 'A', 'sound': None},
+    {'key': K_b, 'name': 'B', 'sound': None},
+    {'key': K_c, 'name': 'C', 'sound': None},
+    {'key': K_d, 'name': 'D', 'sound': None},
+    {'key': K_e, 'name': 'E', 'sound': None},
+    {'key': K_f, 'name': 'F', 'sound': None},
+    {'key': K_g, 'name': 'G', 'sound': None}
 ]
 
 # Load sounds
-for note in piano_notes:
-    try:
-        note['sound'] = pygame.mixer.Sound(f"C:/Users/USER/Documents/GitHub/FragmentsOfMaya/fragments/piano_notes/{note['name']}3.mp3")
-    except:
-        print(f"Couldn't load sound for {note['name']}")
-        arr = pygame.sndarray.array(note['sound']) if note['sound'] else None
-        if arr is not None:
-            arr[:] = 0
-            note['sound'] = pygame.mixer.Sound(buffer=arr)
-
-key_to_note = {note['key']: note for note in piano_notes}
+try:
+    sound_files = ['A3.mp3', 'B3.mp3', 'C3.mp3', 'D3.mp3', 'E3.mp3', 'F3.mp3', 'G3.mp3']
+    for i, note in enumerate(piano_notes):
+        note['sound'] = pygame.mixer.Sound(f"C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\piano notes\\{sound_files[i]}")
+except Exception as e:
+    print(f"Error loading sounds: {e}")
+    for note in piano_notes:
+        note['sound'] = pygame.mixer.Sound(buffer=bytearray(100))
 
 class GameState:
     def __init__(self):
-        # Stage management
         self.current_stage = 1
-        self.max_stages = 5
+        self.max_stages = 1
         self.current_phase = 1
         self.max_phases = 5
         self.stage_state = STAGE_FOREST
         
-        # Forest variables
-        self.x = 250
-        self.y = 630
+        # Forest
+        self.x, self.y = 250, 630
         self.y_velocity = 0
         self.is_jumping = False
         self.current_img = 0
@@ -136,12 +125,10 @@ class GameState:
         self.direction = 'right'
         self.show_message = False
         
-        # Piano variables
+        # Piano
         self.piano_state = STATE_PIANO
         self.current_sequence = []
         self.player_sequence = []
-        self.feedback_time = 0
-        self.sequence_length = 3 + self.current_stage
         self.active_key = None
         self.generate_sequence()
         self.sequence_playing = False
@@ -151,14 +138,15 @@ class GameState:
         self.wrong_key_time = 0
         self.replay_cooldown = 0
         self.key_pressed_time = 0
+        self.feedback_time = 0
+        self.show_visual_keys = True  # Controls whether to show key highlights
         
-        # Victory screen
+        # Victory
         self.victory_time = 0
 
     def generate_sequence(self):
         self.sequence_length = 3 + self.current_stage
-        available_notes = [note['name'] for note in piano_notes]
-        self.current_sequence = random.sample(available_notes, min(len(available_notes), self.sequence_length))
+        self.current_sequence = random.sample([note['name'] for note in piano_notes], min(7, self.sequence_length))
         self.player_sequence = []
         self.current_note_index = 0
 
@@ -168,16 +156,19 @@ font_large = pygame.font.Font(None, 120)
 font_medium = pygame.font.Font(None, 48)
 font_small = pygame.font.Font(None, 36)
 
-def play_note(note_name):
+def play_note(note_name, show_visual=True):
+    """Play a note sound and optionally show the key press visually"""
     for note in piano_notes:
         if note['name'] == note_name and note['sound']:
             note['sound'].play()
-            state.active_key = note['key']
-            state.key_pressed_time = pygame.time.get_ticks()
+            if show_visual:
+                state.active_key = note['key']
+                state.key_pressed_time = pygame.time.get_ticks()
             return note['key']
     return None
 
 def play_sequence():
+    """Start playing the sequence of notes"""
     state.sequence_playing = True
     state.current_note_index = 0
     state.note_time = pygame.time.get_ticks()
@@ -194,7 +185,6 @@ def handle_piano_events(event):
     if event.type == KEYDOWN:
         if event.key == K_ESCAPE:
             state.stage_state = STAGE_FOREST
-            state.x, state.y = 250, 630
         elif event.key == K_RETURN:
             if state.piano_state == STATE_PIANO:
                 play_sequence()
@@ -209,10 +199,9 @@ def handle_piano_events(event):
             play_sequence()
             state.piano_state = STATE_LISTENING
             state.replay_cooldown = pygame.time.get_ticks()
-        elif event.key in key_to_note and state.piano_state != STATE_FEEDBACK:
-            note = key_to_note[event.key]
-            if note['sound']:
-                note['sound'].play()
+        elif event.key in {note['key'] for note in piano_notes} and state.piano_state != STATE_FEEDBACK:
+            note = next(n for n in piano_notes if n['key'] == event.key)
+            note['sound'].play()
             state.active_key = event.key
             state.key_pressed_time = pygame.time.get_ticks()
             if state.piano_state == STATE_GUESSING:
@@ -222,7 +211,7 @@ def handle_piano_events(event):
                         state.last_wrong_key = event.key
                         state.wrong_key_time = pygame.time.get_ticks()
     
-    if event.type == KEYUP and event.key in key_to_note:
+    if event.type == KEYUP and event.key in {note['key'] for note in piano_notes}:
         if state.active_key == event.key:
             state.active_key = None
 
@@ -230,16 +219,15 @@ def update_forest():
     keys = pygame.key.get_pressed()
     
     if keys[K_LEFT] or keys[K_a]:
-        state.x -= 5
+        state.x = max(-100, state.x - 5)
         state.direction = 'left'
     elif keys[K_RIGHT] or keys[K_d]:
-        state.x += 5
+        state.x = min(WIDTH, state.x + 5)
         state.direction = 'right'
     
-    if (keys[K_LEFT] or keys[K_RIGHT] or keys[K_a] or keys[K_d]):
-        if pygame.time.get_ticks() - state.last_switch > 300:
-            state.current_img = (state.current_img + 1) % 4
-            state.last_switch = pygame.time.get_ticks()
+    if (keys[K_LEFT] or keys[K_RIGHT] or keys[K_a] or keys[K_d]) and pygame.time.get_ticks() - state.last_switch > 300:
+        state.current_img = (state.current_img + 1) % 4
+        state.last_switch = pygame.time.get_ticks()
     
     if state.is_jumping:
         state.y += state.y_velocity
@@ -248,8 +236,7 @@ def update_forest():
             state.y = 630
             state.is_jumping = False
     
-    state.show_message = (state.x >= 550 and state.x <= 650) and (state.y >= 580 and state.y <= 680)
-    state.x = max(-100, min(WIDTH, state.x))
+    state.show_message = (550 <= state.x <= 650) and (580 <= state.y <= 680)
 
 def update_piano():
     current_time = pygame.time.get_ticks()
@@ -257,19 +244,18 @@ def update_piano():
     if state.piano_state == STATE_LISTENING and state.sequence_playing:
         if current_time - state.note_time > 500:
             if state.current_note_index < len(state.current_sequence):
-                play_note(state.current_sequence[state.current_note_index])
+                # Play the note sound but DON'T show the key visually
+                play_note(state.current_sequence[state.current_note_index], show_visual=False)
                 state.current_note_index += 1
                 state.note_time = current_time
             else:
                 state.sequence_playing = False
-                if state.piano_state == STATE_LISTENING:
-                    state.piano_state = STATE_GUESSING
+                state.piano_state = STATE_GUESSING
     
     elif state.piano_state == STATE_FEEDBACK:
         if current_time - state.feedback_time > 2000:
             if state.player_sequence == state.current_sequence:
                 state.current_phase += 1
-                
                 if state.current_phase > state.max_phases:
                     state.current_phase = 1
                     if state.current_stage < state.max_stages:
@@ -277,27 +263,20 @@ def update_piano():
                     else:
                         state.stage_state = VICTORY_SCREEN
                         state.victory_time = current_time
-                
-                state.generate_sequence()
-                state.piano_state = STATE_PIANO
-            else:
-                state.generate_sequence()
-                state.piano_state = STATE_PIANO
+            state.generate_sequence()
+            state.piano_state = STATE_PIANO
     
     if state.last_wrong_key and current_time - state.wrong_key_time > 500:
         state.last_wrong_key = None
-    
     if state.active_key and current_time - state.key_pressed_time > 500:
         state.active_key = None
 
 def update_victory():
-    current_time = pygame.time.get_ticks()
-    if current_time - state.victory_time > 5000:
+    if pygame.time.get_ticks() - state.victory_time > 5000:
         state.current_stage = 1
         state.current_phase = 1
         state.stage_state = STAGE_FOREST
         state.x, state.y = 250, 630
-        state.generate_sequence()
 
 def render_forest():
     screen.blit(forest_bg, (0, 0))
@@ -305,85 +284,96 @@ def render_forest():
     
     if state.show_message:
         text = font_small.render("Press X for piano challenge", True, WHITE)
-        text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT - 50))
-        screen.blit(text, text_rect)
+        screen.blit(text, (WIDTH//2 - text.get_width()//2, HEIGHT - 50))
     
     if state.current_stage > 1:
-        stage_text = font_medium.render(f"Stage {state.current_stage}", True, WHITE)
-        screen.blit(stage_text, (20, 20))
+        text = font_medium.render(f"Stage {state.current_stage}", True, WHITE)
+        screen.blit(text, (20, 20))
 
 def render_piano():
-    # Draw full-screen piano background
+    # 1. Draw forest background first (shows through transparency)
+    screen.blit(forest_bg, (0, 0))
+    
+    # 2. Draw piano background with proper transparency
     screen.blit(piano_bg, (0, 0))
     
-    # Draw key highlights if pressed
-    if state.active_key in key_overlays:
-        key_index = [note['key'] for note in piano_notes].index(state.active_key)
-        key_x = key_index * (WIDTH // 7)
-        screen.blit(key_overlays[state.active_key], (key_x, HEIGHT - 200))
+    # 3. Add semi-transparent overlay for better UI visibility
+    overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    overlay.fill((30, 30, 40, 120))  # Semi-transparent dark blue
+    screen.blit(overlay, (0, 0))
     
-    # Draw piano UI elements
+    # 4. Draw active piano key when pressed (only during player's turn, not during listening)
+    if state.piano_state != STATE_LISTENING and state.active_key and pygame.time.get_ticks() - state.key_pressed_time < 500:
+        screen.blit(piano_key_bgs[state.active_key], (0, 0))
+    
+    # 5. UI Elements (non-transparent)
     if state.piano_state == STATE_PIANO:
-        text = font_medium.render(f"Stage {state.current_stage} - Phase {state.current_phase}/{state.max_phases}", True, WHITE)
-        screen.blit(text, (WIDTH//2 - 150, 20))
-        
-        text = font_medium.render("Press ENTER to start", True, WHITE)
-        screen.blit(text, (WIDTH//2 - 120, 70))
-        
-        text = font_small.render(f"Notes: {state.sequence_length}", True, WHITE)
-        screen.blit(text, (WIDTH//2 - 60, 120))
+        texts = [
+            f"Stage {state.current_stage} - Phase {state.current_phase}/{state.max_phases}",
+            "Press ENTER to start",
+            f"Notes: {state.sequence_length}"
+        ]
+        for i, text in enumerate(texts):
+            rendered = font_medium.render(text, True, WHITE)
+            screen.blit(rendered, (WIDTH//2 - rendered.get_width()//2, 20 + i * 50))
     
     elif state.piano_state == STATE_LISTENING:
         text = font_medium.render("Listen carefully...", True, WHITE)
-        screen.blit(text, (WIDTH//2 - 120, 50))
+        screen.blit(text, (WIDTH//2 - text.get_width()//2, 50))
     
     elif state.piano_state == STATE_GUESSING:
-        text = font_medium.render(f"Phase {state.current_phase}/{state.max_phases}", True, WHITE)
-        screen.blit(text, (WIDTH//2 - 80, 20))
-        
-        text = font_medium.render("Repeat the sequence:", True, WHITE)
-        screen.blit(text, (WIDTH//2 - 140, 70))
-        
+        # Progress dots
         for i in range(len(state.current_sequence)):
             color = WHITE if i >= len(state.player_sequence) else (
                 GREEN if state.player_sequence[i] == state.current_sequence[i] else RED)
             pygame.draw.circle(screen, color, (WIDTH//2 - 100 + i * 50, 150), 15)
         
+        texts = [
+            f"Phase {state.current_phase}/{state.max_phases}",
+            "Repeat the sequence:",
+            "R=Replay | BACKSPACE=Undo"
+        ]
+        for i, text in enumerate(texts):
+            rendered = font_medium.render(text, True, WHITE) if i != 2 else font_small.render(text, True, YELLOW)
+            screen.blit(rendered, (WIDTH//2 - rendered.get_width()//2, 20 + i * 70))
+        
         if len(state.player_sequence) == len(state.current_sequence):
             text = font_medium.render("Press ENTER to submit", True, (0, 255, 255))
-            screen.blit(text, (WIDTH//2 - 150, 200))
-        
-        text = font_small.render("R=Replay | BACKSPACE=Undo", True, YELLOW)
-        screen.blit(text, (WIDTH//2 - 150, 250))
+            screen.blit(text, (WIDTH//2 - text.get_width()//2, 200))
     
     elif state.piano_state == STATE_FEEDBACK:
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        if state.player_sequence == state.current_sequence:
-            overlay.fill((0, 255, 0, 180))  # Semi-transparent green
-            text = font_large.render("CORRECT!", True, WHITE)
-        else:
-            overlay.fill((255, 0, 0, 180))  # Semi-transparent red
-            text = font_large.render("WRONG!", True, WHITE)
-        
+        overlay.fill((0, 255, 0, 180) if state.player_sequence == state.current_sequence else (255, 0, 0, 180))
         screen.blit(overlay, (0, 0))
-        text_rect = text.get_rect(center=(WIDTH//2, HEIGHT//2))
-        screen.blit(text, text_rect)
+        
+        text = font_large.render("CORRECT!" if state.player_sequence == state.current_sequence else "WRONG!", True, WHITE)
+        screen.blit(text, (WIDTH//2 - text.get_width()//2, HEIGHT//2 - 50))
+        
+        if state.player_sequence != state.current_sequence:
+            text = font_medium.render(f"Sequence: {'-'.join(state.current_sequence)}", True, WHITE)
+            screen.blit(text, (WIDTH//2 - text.get_width()//2, HEIGHT//2 + 50))
 
 def render_victory():
-    screen.fill(PURPLE)
-    text1 = font_large.render("CONGRATULATIONS!", True, YELLOW)
-    text2 = font_medium.render(f"You completed all {state.max_stages} stages!", True, WHITE)
-    text3 = font_medium.render(f"Total phases completed: {state.max_stages * state.max_phases}", True, WHITE)
+    try:
+        # Load victory background with corrected path
+        victory_bg = pygame.image.load("C:\\Users\\USER\\Documents\\GitHub\\FragmentsOfMaya\\fragments\\mysterybg.png").convert()
+        victory_bg = pygame.transform.scale(victory_bg, (WIDTH, HEIGHT))
+        screen.blit(victory_bg, (0, 0))
+    except Exception as e:
+        print(f"Error loading victory background: {e}")
+        # Fallback for victory screen
+        screen.fill(PURPLE)  # Fallback to purple if image can't be loaded
     
-    text1_rect = text1.get_rect(center=(WIDTH//2, HEIGHT//2 - 100))
-    text2_rect = text2.get_rect(center=(WIDTH//2, HEIGHT//2))
-    text3_rect = text3.get_rect(center=(WIDTH//2, HEIGHT//2 + 100))
-    
-    screen.blit(text1, text1_rect)
-    screen.blit(text2, text2_rect)
-    screen.blit(text3, text3_rect)
+    texts = [
+        "CONGRATULATIONS!",
+        f"You completed all the piano stage!",
+        f"But don't get too excited, this is just the beginning."
+    ]
+    for i, text in enumerate(texts):
+        rendered = font_large.render(text, True, YELLOW) if i == 0 else font_medium.render(text, True, WHITE)
+        screen.blit(rendered, (WIDTH//2 - rendered.get_width()//2, HEIGHT//2 - 100 + i * 100))
 
-# Main game loop
+# Main loop
 running = True
 while running:
     for event in pygame.event.get():
@@ -398,8 +388,6 @@ while running:
             state.current_stage = 1
             state.current_phase = 1
             state.stage_state = STAGE_FOREST
-            state.x, state.y = 250, 630
-            state.generate_sequence()
     
     # Update
     if state.stage_state == STAGE_FOREST:
