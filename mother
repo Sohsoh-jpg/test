@@ -1,0 +1,622 @@
+import pygame
+import random
+import math
+import sys
+import os
+
+# Initialize pygame
+pygame.init()
+screen_width, screen_height = 900, 700
+screen = pygame.display.set_mode((screen_width, screen_height))
+pygame.display.set_caption("Fragments: Maya's Reflection")
+clock = pygame.time.Clock()
+
+# Colors
+BG_COLOR = (20, 20, 30)
+EDGE_COLOR = (100, 100, 120)
+MIRROR_COLOR = (220, 220, 240, 150)
+HIGHLIGHT_COLOR = (255, 255, 200, 200)
+TEXT_COLOR = (240, 240, 255)
+SHADOW_COLOR = (10, 10, 15, 150)
+GUIDE_COLOR = (255, 220, 100, 100)  # Yellow guide color when near correct position
+
+# Game constants
+MIRROR_WIDTH, MIRROR_HEIGHT = 500, 400
+SNAP_DISTANCE = 50  # Distance at which pieces snap into place
+GUIDE_DISTANCE = 80  # Distance at which to show guide highlight
+REFLECTION_FADE_TIME = 3000  # Time for reflection fade-in (milliseconds)
+
+# Puzzle configuration
+GRID_COLS, GRID_ROWS = 5, 4  # Grid density
+NUM_REAL_SHARDS = GRID_COLS * GRID_ROWS  # All grid cells will have real pieces
+NUM_FAKE_SHARDS = 8  # Increased number of fake pieces
+
+# Custom events
+REFLECTION_EVENT = pygame.USEREVENT + 1
+
+class MirrorShard:
+    def __init__(self, points, is_real=True, puzzle_pos=None, grid_pos=None):
+        self.points = points  # List of point coordinates forming the shard
+        self.is_real = is_real  # True if it's a real part of the mirror
+        self.puzzle_pos = puzzle_pos  # Where it should be placed in puzzle (target position)
+        self.grid_pos = grid_pos  # Grid position (col, row) for reference
+        
+        # Calculate center of the shard
+        x_coords = [p[0] for p in points]
+        y_coords = [p[1] for p in points]
+        self.center = (sum(x_coords) / len(points), sum(y_coords) / len(points))
+        
+        # Position and state
+        self.pos = self.center  # Current position
+        self.dragging = False
+        self.placed = False  # Whether it's correctly placed
+        self.near_target = False  # Whether it's close to target position
+        
+        # Create shard surface with transparency
+        self.create_surface()
+    
+    def create_surface(self):
+        # Find the bounds of the shard
+        x_coords = [p[0] for p in self.points]
+        y_coords = [p[1] for p in self.points]
+        min_x, max_x = min(x_coords), max(x_coords)
+        min_y, max_y = min(y_coords), max(y_coords)
+        width = max_x - min_x + 10  # Add a small buffer
+        height = max_y - min_y + 10
+        
+        # Create surface with transparency
+        self.surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        
+        # Adjust points for the surface
+        adjusted_points = [(x - min_x + 5, y - min_y + 5) for x, y in self.points]
+        
+        # Draw shard onto surface
+        if self.is_real:
+            color = MIRROR_COLOR
+            edge_color = EDGE_COLOR
+        else:
+            # Fake shards have a slightly different color
+            color = (200, 210, 230, 150)
+            edge_color = (90, 95, 110)
+        
+        pygame.draw.polygon(self.surface, color, adjusted_points)
+        pygame.draw.polygon(self.surface, edge_color, adjusted_points, 2)
+        
+        # Add subtle "glass" effect
+        for _ in range(3):
+            start_pos = adjusted_points[random.randint(0, len(adjusted_points)-1)]
+            end_pos = adjusted_points[random.randint(0, len(adjusted_points)-1)]
+            pygame.draw.line(self.surface, (255, 255, 255, 30), start_pos, end_pos, 1)
+        
+        # Store dimensions and offset
+        self.width, self.height = width, height
+        self.offset = (min_x - 5, min_y - 5)  # Offset from center to top-left
+        
+        # Create a guide surface (shown when near target position)
+        self.guide_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.polygon(self.guide_surface, GUIDE_COLOR, adjusted_points)
+    
+    def contains_point(self, point):
+        # Check if point is within surface bounds
+        surface_x = self.pos[0] - self.width/2
+        surface_y = self.pos[1] - self.height/2
+        if not (surface_x <= point[0] <= surface_x + self.width and 
+                surface_y <= point[1] <= surface_y + self.height):
+            return False
+        
+        # Convert screen coordinates to surface coordinates
+        local_x = point[0] - surface_x
+        local_y = point[1] - surface_y
+        
+        # Check if the point is within bounds of the surface
+        if local_x < 0 or local_x >= self.width or local_y < 0 or local_y >= self.height:
+            return False
+            
+        # Get color at point (transparent if outside polygon)
+        try:
+            color = self.surface.get_at((int(local_x), int(local_y)))
+            # If alpha is not zero, point is inside polygon
+            return color[3] > 0
+        except IndexError:
+            return False
+    
+    def start_drag(self, pos):
+        self.drag_offset = (self.pos[0] - pos[0], self.pos[1] - pos[1])
+        self.dragging = True
+        if self.placed:
+            self.placed = False
+    
+    def drag(self, pos):
+        if self.dragging:
+            self.pos = (pos[0] + self.drag_offset[0], pos[1] + self.drag_offset[1])
+            
+            # Check if near target position
+            if self.is_real and self.puzzle_pos:
+                distance = math.sqrt((self.pos[0] - self.puzzle_pos[0])**2 + 
+                                    (self.pos[1] - self.puzzle_pos[1])**2)
+                self.near_target = distance < GUIDE_DISTANCE
+            else:
+                self.near_target = False
+    
+    def end_drag(self):
+        self.dragging = False
+        if self.is_real and self.puzzle_pos:
+            # Check if close enough to snap into place
+            distance = math.sqrt((self.pos[0] - self.puzzle_pos[0])**2 + 
+                                (self.pos[1] - self.puzzle_pos[1])**2)
+            if distance < SNAP_DISTANCE:
+                self.pos = self.puzzle_pos
+                self.placed = True
+                self.near_target = False
+                return True  # Successfully placed
+        self.near_target = False
+        return False
+    
+    def draw(self, surface):
+        # Shadow position
+        shadow_x = self.pos[0] - self.width/2 + 5
+        shadow_y = self.pos[1] - self.height/2 + 5
+        
+        # Draw guide highlight when near target
+        if self.near_target:
+            guide_x = self.puzzle_pos[0] - self.width/2
+            guide_y = self.puzzle_pos[1] - self.height/2
+            screen.blit(self.guide_surface, (guide_x, guide_y))
+        
+        # Highlight when dragging
+        if self.dragging:
+            highlight_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            rect = self.surface.get_rect()
+            points = [
+                (0, 0),
+                (rect.width, 0),
+                (rect.width, rect.height),
+                (0, rect.height)
+            ]
+            pygame.draw.polygon(highlight_surface, HIGHLIGHT_COLOR, points)
+            screen.blit(highlight_surface, (shadow_x, shadow_y))
+        
+        # Draw the shard at its position
+        screen.blit(self.surface, 
+                    (self.pos[0] - self.width/2, 
+                    self.pos[1] - self.height/2))
+
+class Game:
+    def __init__(self):
+        self.load_assets()
+        self.reset_game()
+        
+    def load_assets(self):
+        # Load or create images for reflections
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        images_dir = os.path.join(base_dir, "mirror_images")
+        
+        # Create directory if it doesn't exist
+        if not os.path.exists(images_dir):
+            os.makedirs(images_dir)
+            
+        # Try to load reflection image or create placeholder
+        reflection_path = os.path.join(images_dir, "mother_daughter.jpg")
+        try:
+            if os.path.exists(reflection_path):
+                self.reflection_img = pygame.image.load(reflection_path)
+                self.reflection_img = pygame.transform.scale(self.reflection_img, 
+                                                            (MIRROR_WIDTH-20, MIRROR_HEIGHT-20))
+            else:
+                self.create_placeholder_reflection()
+        except:
+            self.create_placeholder_reflection()
+        
+        # Create frame
+        self.create_mirror_frame()
+        
+        # Create or load background
+        bg_path = os.path.join(images_dir, "room_bg.jpg")
+        try:
+            if os.path.exists(bg_path):
+                self.background = pygame.image.load(bg_path)
+                self.background = pygame.transform.scale(self.background, (screen_width, screen_height))
+            else:
+                self.create_placeholder_background()
+        except:
+            self.create_placeholder_background()
+    
+    def create_placeholder_reflection(self):
+        self.reflection_img = pygame.Surface((MIRROR_WIDTH-20, MIRROR_HEIGHT-20))
+        self.reflection_img.fill((200, 200, 220))
+        
+        # Draw simple silhouettes to represent mother and daughter
+        mother_color = (150, 150, 170)
+        daughter_color = (170, 170, 190)
+        
+        # Mother silhouette (left side)
+        pygame.draw.ellipse(self.reflection_img, mother_color, (80, 50, 90, 110))  # Head
+        pygame.draw.rect(self.reflection_img, mother_color, (85, 160, 80, 180))    # Body
+        
+        # Daughter silhouette (right side)
+        pygame.draw.ellipse(self.reflection_img, daughter_color, (300, 80, 70, 90))  # Head
+        pygame.draw.rect(self.reflection_img, daughter_color, (295, 170, 80, 150))   # Body
+        
+        # Add a gap between them to show emotional distance
+        empty_space = pygame.Rect(190, 0, 70, MIRROR_HEIGHT-20)
+        pygame.draw.rect(self.reflection_img, (210, 210, 230), empty_space)
+    
+    def create_mirror_frame(self):
+        # Create a decorative frame for the mirror
+        frame_width = MIRROR_WIDTH + 40
+        frame_height = MIRROR_HEIGHT + 40
+        self.frame = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+        
+        # Outer frame
+        pygame.draw.rect(self.frame, (100, 80, 60), (0, 0, frame_width, frame_height), border_radius=5)
+        
+        # Inner frame
+        inner_rect = pygame.Rect(20, 20, MIRROR_WIDTH, MIRROR_HEIGHT)
+        pygame.draw.rect(self.frame, (50, 40, 30), inner_rect, border_radius=3)
+        
+        # Decorative elements
+        for i in range(0, frame_width, 40):
+            pygame.draw.rect(self.frame, (120, 100, 80), (i, 5, 20, 10))
+            pygame.draw.rect(self.frame, (120, 100, 80), (i, frame_height-15, 20, 10))
+        
+        for i in range(0, frame_height, 40):
+            pygame.draw.rect(self.frame, (120, 100, 80), (5, i, 10, 20))
+            pygame.draw.rect(self.frame, (120, 100, 80), (frame_width-15, i, 10, 20))
+    
+    def create_placeholder_background(self):
+        self.background = pygame.Surface((screen_width, screen_height))
+        self.background.fill(BG_COLOR)
+        
+        # Create a simple room backdrop
+        # Floor
+        pygame.draw.rect(self.background, (80, 60, 40), (0, screen_height-150, screen_width, 150))
+        
+        # Wall panels
+        for i in range(0, screen_width, 200):
+            pygame.draw.rect(self.background, (60, 60, 80), (i, 0, 100, screen_height-150))
+        
+        # Add some visual elements
+        for _ in range(30):
+            x = random.randint(0, screen_width)
+            y = random.randint(0, screen_height-150)
+            radius = random.randint(1, 3)
+            color = (random.randint(40, 70), random.randint(40, 70), random.randint(60, 90))
+            pygame.draw.circle(self.background, color, (x, y), radius)
+    
+    def generate_shards(self):
+        shards = []
+        
+        # Mirror center position
+        mirror_x = (screen_width - MIRROR_WIDTH) // 2 + MIRROR_WIDTH // 2
+        mirror_y = (screen_height - MIRROR_HEIGHT) // 2 + MIRROR_HEIGHT // 2 - 20
+        
+        # Store mirror frame position for reference
+        self.mirror_frame_pos = ((screen_width - MIRROR_WIDTH - 40) // 2,
+                                 (screen_height - MIRROR_HEIGHT - 40) // 2 - 20)
+        
+        # Calculate cell dimensions
+        cell_width = MIRROR_WIDTH / GRID_COLS
+        cell_height = MIRROR_HEIGHT / GRID_ROWS
+        
+        # Step 1: Generate grid of corner points for all cells
+        # This ensures shared edges will have exactly the same coordinates
+        corner_points = {}
+        for col in range(GRID_COLS + 1):
+            for row in range(GRID_ROWS + 1):
+                x = mirror_x - MIRROR_WIDTH//2 + col * cell_width
+                y = mirror_y - MIRROR_HEIGHT//2 + row * cell_height
+                corner_points[(col, row)] = (x, y)
+        
+        # Step 2: Generate interior points for edges between cells
+        # These will ensure there are no gaps between pieces
+        edge_midpoints = {}
+        
+        # Horizontal edges
+        for col in range(GRID_COLS):
+            for row in range(GRID_ROWS + 1):
+                pt1 = corner_points[(col, row)]
+                pt2 = corner_points[(col + 1, row)]
+                
+                # Create 1-3 intermediate points with small random y-offsets
+                num_points = random.randint(1, 2)
+                points = []
+                for i in range(1, num_points + 1):
+                    t = i / (num_points + 1)
+                    x = pt1[0] + t * (pt2[0] - pt1[0])
+                    # Small random offset perpendicular to edge
+                    offset_dir = -1 if row == 0 or row == GRID_ROWS else random.choice([-1, 1]) 
+                    offset = random.uniform(3, 10) * offset_dir
+                    y = pt1[1] + t * (pt2[1] - pt1[1]) + offset
+                    # Clamp y to mirror bounds
+                    y = max(mirror_y - MIRROR_HEIGHT//2, min(mirror_y + MIRROR_HEIGHT//2, y))
+                    points.append((x, y))
+                
+                edge_midpoints[('h', col, row)] = points
+        
+        # Vertical edges
+        for col in range(GRID_COLS + 1):
+            for row in range(GRID_ROWS):
+                pt1 = corner_points[(col, row)]
+                pt2 = corner_points[(col, row + 1)]
+                
+                # Create 1-3 intermediate points with small random x-offsets
+                num_points = random.randint(1, 2)
+                points = []
+                for i in range(1, num_points + 1):
+                    t = i / (num_points + 1)
+                    y = pt1[1] + t * (pt2[1] - pt1[1])
+                    # Small random offset perpendicular to edge
+                    offset_dir = -1 if col == 0 or col == GRID_COLS else random.choice([-1, 1])
+                    offset = random.uniform(3, 10) * offset_dir
+                    x = pt1[0] + t * (pt2[0] - pt1[0]) + offset
+                    # Clamp x to mirror bounds
+                    x = max(mirror_x - MIRROR_WIDTH//2, min(mirror_x + MIRROR_WIDTH//2, x))
+                    points.append((x, y))
+                
+                edge_midpoints[('v', col, row)] = points
+        
+        # Step 3: Generate pieces by combining corners and edge points
+        for col in range(GRID_COLS):
+            for row in range(GRID_ROWS):
+                piece_vertices = []
+                
+                # Add corner points
+                piece_vertices.append(corner_points[(col, row)])
+                
+                # Add top edge midpoints
+                for pt in edge_midpoints[('h', col, row)]:
+                    piece_vertices.append(pt)
+                
+                # Add top-right corner
+                piece_vertices.append(corner_points[(col + 1, row)])
+                
+                # Add right edge midpoints
+                for pt in edge_midpoints[('v', col + 1, row)]:
+                    piece_vertices.append(pt)
+                
+                # Add bottom-right corner
+                piece_vertices.append(corner_points[(col + 1, row + 1)])
+                
+                # Add bottom edge midpoints (reversed)
+                for pt in reversed(edge_midpoints[('h', col, row + 1)]):
+                    piece_vertices.append(pt)
+                
+                # Add bottom-left corner
+                piece_vertices.append(corner_points[(col, row + 1)])
+                
+                # Add left edge midpoints (reversed)
+                for pt in reversed(edge_midpoints[('v', col, row)]):
+                    piece_vertices.append(pt)
+                
+                # Calculate center of the cell for the puzzle position
+                center_x = mirror_x - MIRROR_WIDTH//2 + (col + 0.5) * cell_width
+                center_y = mirror_y - MIRROR_HEIGHT//2 + (row + 0.5) * cell_height
+                
+                # Create the shard
+                shard = MirrorShard(
+                    piece_vertices,
+                    is_real=True,
+                    puzzle_pos=(center_x, center_y),
+                    grid_pos=(col, row)
+                )
+                
+                # Position it randomly on screen but not inside the mirror frame
+                while True:
+                    margin = 100
+                    pos_x = random.randint(margin, screen_width-margin)
+                    pos_y = random.randint(margin, screen_height-margin)
+                    
+                    # Check if position is inside the mirror frame
+                    if not (self.mirror_frame_pos[0] < pos_x < self.mirror_frame_pos[0] + MIRROR_WIDTH + 40 and
+                            self.mirror_frame_pos[1] < pos_y < self.mirror_frame_pos[1] + MIRROR_HEIGHT + 40):
+                        shard.pos = (pos_x, pos_y)
+                        break
+                
+                shards.append(shard)
+        
+        # Create fake shards
+        for _ in range(NUM_FAKE_SHARDS):
+            # Make fake shards similar to real ones
+            # Choose a random number of vertices
+            num_vertices = random.randint(4, 7)
+            
+            # Position it outside the mirror area
+            while True:
+                center_x = random.randint(100, screen_width-100)
+                center_y = random.randint(100, screen_height-100)
+                
+                # Check if position is inside the mirror frame
+                if not (self.mirror_frame_pos[0] < center_x < self.mirror_frame_pos[0] + MIRROR_WIDTH + 40 and
+                        self.mirror_frame_pos[1] < center_y < self.mirror_frame_pos[1] + MIRROR_HEIGHT + 40):
+                    break
+            
+            # Create vertices with varying distances from center
+            points = []
+            for j in range(num_vertices):
+                angle = 2 * math.pi * j / num_vertices
+                # More variation in fake shard shapes
+                radius = random.uniform(20, 40)
+                x = center_x + radius * math.cos(angle)
+                y = center_y + radius * math.sin(angle)
+                points.append((x, y))
+            
+            # Create fake shard with no target position
+            shard = MirrorShard(points, is_real=False)
+            shard.pos = (center_x, center_y)
+            
+            shards.append(shard)
+        
+        return shards
+    
+    def reset_game(self):
+        self.shards = self.generate_shards()
+        self.active_shard = None
+        self.placed_count = 0
+        self.show_reflection = False
+        self.reflection_alpha = 0
+        self.game_completed = False
+        self.show_instructions = True
+        self.instruction_time = 8000  # Show instructions longer (8 seconds)
+    
+    def handle_click(self, pos, button):
+        if self.game_completed:
+            # If game is over and player clicks, restart
+            if button == 1:  # Left click
+                self.reset_game()
+            return
+        
+        if button == 1:  # Left click
+            # Check if we clicked on a shard
+            for shard in reversed(self.shards):  # Check top shards first
+                if not shard.placed and shard.contains_point(pos):
+                    self.active_shard = shard
+                    shard.start_drag(pos)
+                    
+                    # Move the active shard to the end of the list (on top)
+                    self.shards.remove(shard)
+                    self.shards.append(shard)
+                    return
+    
+    def handle_release(self):
+        if self.active_shard:
+            if self.active_shard.end_drag():
+                self.placed_count += 1
+                
+                # Check if all real shards are placed
+                if self.placed_count == NUM_REAL_SHARDS:
+                    self.game_completed = True
+                    self.show_reflection = True
+                    pygame.time.set_timer(REFLECTION_EVENT, REFLECTION_FADE_TIME)
+            
+            self.active_shard = None
+    
+    def handle_motion(self, pos):
+        if self.active_shard:
+            self.active_shard.drag(pos)
+    
+    def update(self, dt):
+        # Update instruction timer
+        if self.show_instructions:
+            self.instruction_time -= dt
+            if self.instruction_time <= 0:
+                self.show_instructions = False
+        
+        # Update reflection fade-in
+        if self.show_reflection:
+            self.reflection_alpha = min(255, self.reflection_alpha + dt * 0.1)
+    
+    def draw(self):
+        # Draw background
+        screen.blit(self.background, (0, 0))
+        
+        # Draw mirror frame
+        frame_pos = ((screen_width - self.frame.get_width()) // 2,
+                     (screen_height - self.frame.get_height()) // 2 - 20)
+        screen.blit(self.frame, frame_pos)
+        
+        # Draw reflection if visible
+        if self.show_reflection and self.reflection_alpha > 0:
+            # Create a copy with current alpha
+            alpha_img = self.reflection_img.copy()
+            alpha_img.set_alpha(self.reflection_alpha)
+            
+            # Position in frame
+            reflection_pos = (frame_pos[0] + 20, frame_pos[1] + 20)
+            screen.blit(alpha_img, reflection_pos)
+        
+        # Draw outlines of where pieces should go if game is not complete
+        if not self.game_completed:
+            # Draw target positions as subtle hints
+            mirror_outline = pygame.Surface((MIRROR_WIDTH, MIRROR_HEIGHT), pygame.SRCALPHA)
+            pygame.draw.rect(mirror_outline, (255, 255, 255, 10), (0, 0, MIRROR_WIDTH, MIRROR_HEIGHT), 1)
+            screen.blit(mirror_outline, (frame_pos[0] + 20, frame_pos[1] + 20))
+        
+        # Draw shards
+        for shard in self.shards:
+            shard.draw(screen)
+        
+        # Draw completion message
+        if self.game_completed:
+            # Draw a semi-transparent overlay
+            overlay = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            screen.blit(overlay, (0, 0))
+            
+            # Draw completion message
+            font = pygame.font.SysFont("Arial", 36)
+            message1 = font.render("The mirror is complete, but the reflection shows distance.", 
+                                  True, TEXT_COLOR)
+            message2 = font.render("Some wounds never fully heal...", True, TEXT_COLOR)
+            
+            screen.blit(message1, (screen_width//2 - message1.get_width()//2, 
+                                  screen_height - 150))
+            screen.blit(message2, (screen_width//2 - message2.get_width()//2, 
+                                  screen_height - 100))
+            
+            # Click to restart
+            restart_font = pygame.font.SysFont("Arial", 24)
+            restart_text = restart_font.render("Click anywhere to restart", True, (200, 200, 200))
+            screen.blit(restart_text, (screen_width//2 - restart_text.get_width()//2, 
+                                      screen_height - 50))
+        
+        # Draw instructions
+        elif self.show_instructions:
+            font = pygame.font.SysFont("Arial", 28)
+            instruction1 = font.render("Assemble the broken mirror by dragging the pieces into place.", 
+                                      True, TEXT_COLOR)
+            instruction2 = font.render("Some pieces may not fit anywhere (fake memories).", 
+                                      True, TEXT_COLOR)
+            instruction3 = font.render("Yellow outlines will guide you when pieces are near their correct position.", 
+                                      True, TEXT_COLOR)
+            
+            # Add a background for better readability
+            bkg = pygame.Surface((instruction1.get_width() + 40, 150), pygame.SRCALPHA)
+            bkg.fill((0, 0, 0, 150))
+            screen.blit(bkg, (screen_width//2 - bkg.get_width()//2, 30))
+            
+            screen.blit(instruction1, (screen_width//2 - instruction1.get_width()//2, 50))
+            screen.blit(instruction2, (screen_width//2 - instruction2.get_width()//2, 90))
+            screen.blit(instruction3, (screen_width//2 - instruction3.get_width()//2, 130))
+        
+        # Draw progress indicator
+        font = pygame.font.SysFont("Arial", 24)
+        progress_text = font.render(f"Pieces placed: {self.placed_count}/{NUM_REAL_SHARDS}", 
+                                   True, TEXT_COLOR)
+        screen.blit(progress_text, (20, 20))
+
+def main():
+    game = Game()
+    
+    # For frame-rate independent movement
+    last_time = pygame.time.get_ticks()
+    
+    running = True
+    while running:
+        # Calculate time since last frame
+        current_time = pygame.time.get_ticks()
+        dt = current_time - last_time
+        last_time = current_time
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                game.handle_click(event.pos, event.button)
+            elif event.type == pygame.MOUSEBUTTONUP:
+                game.handle_release()
+            elif event.type == pygame.MOUSEMOTION:
+                game.handle_motion(event.pos)
+            elif event.type == REFLECTION_EVENT:
+                pygame.time.set_timer(REFLECTION_EVENT, 0)  # Stop the timer
+        
+        game.update(dt)
+        game.draw()
+        
+        pygame.display.flip()
+        clock.tick(60)
+    
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
